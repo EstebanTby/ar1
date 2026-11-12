@@ -1,104 +1,493 @@
 
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-  <meta charset="utf-8">
-  <title>Visualizador 3D con AR</title>
-
+  <meta charset="UTF-8">
   <meta name="viewport"
-        content="width=device-width, initial-scale=1">
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
-  <!-- Cargar Model Viewer -->
-  <script type="module"
-    src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
-  </script>
+  <title>Visor AR con ArUco</title>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
-      padding: 0;
       overflow: hidden;
+      background: #000;
       font-family: Arial, sans-serif;
-      background: #eeeeee;
     }
 
-    /* Visor 3D */
-    model-viewer {
-      width: 100vw;
-      height: 100vh;
-      background-color: #eeeeee;
-    }
-
-    /* Botón AR fijo */
-    #botonAR {
+    #camara {
       position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1000;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
 
+    #visor3D {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    #panel {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 15px;
+      z-index: 10;
+      padding: 15px;
+      background: rgba(0,0,0,0.78);
+      color: white;
+      border-radius: 12px;
+    }
+
+    #iniciar {
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 8px;
       background: #1677ff;
       color: white;
-
-      border: none;
-      border-radius: 12px;
-
-      padding: 16px 28px;
-
-      font-size: 17px;
+      font-size: 16px;
       font-weight: bold;
-
-      cursor: pointer;
-      white-space: nowrap;
-
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      margin-bottom: 12px;
     }
 
-    #botonAR:active {
-      background: #0055cc;
+    .control {
+      margin-top: 12px;
     }
 
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    #estado {
+      font-size: 13px;
+      margin-top: 10px;
+      color: #ddd;
+      text-align: center;
+    }
+
+    #deteccion {
+      color: #ffcc55;
+    }
   </style>
 </head>
 
 <body>
 
-  <!-- VISUALIZADOR 3D -->
-  <model-viewer
-    id="visor"
+  <video id="camara" autoplay playsinline muted></video>
+  <canvas id="visor3D"></canvas>
 
-    src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.glb"
+  <div id="panel">
 
-    ios-src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.usdz"
+    <button id="iniciar">
+      ACTIVAR CÁMARA Y AR
+    </button>
 
-    ar
-    ar-modes="quick-look"
-    ar-scale="fixed"
+    <div class="control">
+      <label>
+        <span>Altura</span>
+        <span id="valorAltura">0 cm</span>
+      </label>
+      <input id="altura"
+             type="range"
+             min="-100"
+             max="300"
+             value="0"
+             step="1">
+    </div>
 
-    camera-controls
+    <div class="control">
+      <label>
+        <span>Escala</span>
+        <span id="valorEscala">1.00×</span>
+      </label>
+      <input id="escala"
+             type="range"
+             min="0.1"
+             max="3"
+             value="1"
+             step="0.05">
+    </div>
 
-    alt="Mi modelo 3D en realidad aumentada">
+    <div id="estado">
+      <span id="deteccion">Buscando marcador ArUco...</span>
+    </div>
 
-  </model-viewer>
+  </div>
+
+  <canvas id="procesamiento"
+          width="640"
+          height="480"
+          style="display:none">
+  </canvas>
+
+  <script type="module">
+
+    import * as THREE from
+      "https://esm.sh/three@0.170.0";
+
+    import { GLTFLoader } from
+      "https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js";
+
+    import {
+      Detector,
+      Dictionary,
+      Posit
+    } from "https://esm.sh/js-aruco3@3.0.0";
+
+    import dict5x5_50 from
+      "https://esm.sh/js-aruco3@3.0.0/dictionaries/dict-5x5-50";
 
 
-  <!-- BOTÓN AR SIEMPRE VISIBLE -->
-  <button id="botonAR">
-    Posicionar modelo en mi espacio
-  </button>
+    // =====================================
+    // CONFIGURACIÓN
+    // =====================================
+
+    const ID_MARCADOR = 0;
+
+    // Medida real del cuadrado negro exterior,
+    // en milímetros.
+    const TAMANO_MARCADOR_MM = 150;
+
+    // Campo visual horizontal aproximado de cámara.
+    const CAMPO_VISUAL = 60;
+
+    // Modelo GLB dentro de la carpeta /1/
+    const RUTA_MODELO = "./modelo.glb";
 
 
-  <!-- ACTIVAR REALIDAD AUMENTADA -->
-  <script>
+    // =====================================
+    // ELEMENTOS HTML
+    // =====================================
 
-    const visor = document.getElementById("visor");
-    const boton = document.getElementById("botonAR");
+    const video = document.getElementById("camara");
 
-    boton.addEventListener("click", function() {
+    const canvas = document.getElementById("procesamiento");
+    const ctx = canvas.getContext("2d", {
+      willReadFrequently: true
+    });
 
-      visor.activateAR();
+    const canvas3D = document.getElementById("visor3D");
+
+    const estado = document.getElementById("deteccion");
+
+    const sliderAltura = document.getElementById("altura");
+    const sliderEscala = document.getElementById("escala");
+
+
+    // =====================================
+    // DETECTOR ARUCO
+    // =====================================
+
+    const diccionario = new Dictionary(dict5x5_50);
+
+    const detector = new Detector({
+      dictionary: diccionario
+    });
+
+
+    // =====================================
+    // ESCENA THREE.JS
+    // =====================================
+
+    const escena = new THREE.Scene();
+
+    const camara3D = new THREE.PerspectiveCamera(
+      CAMPO_VISUAL,
+      window.innerWidth / window.innerHeight,
+      0.01,
+      100
+    );
+
+    const renderizador = new THREE.WebGLRenderer({
+      canvas: canvas3D,
+      alpha: true,
+      antialias: true
+    });
+
+    renderizador.setPixelRatio(
+      Math.min(window.devicePixelRatio, 2)
+    );
+
+    renderizador.setSize(
+      window.innerWidth,
+      window.innerHeight
+    );
+
+    renderizador.outputColorSpace = THREE.SRGBColorSpace;
+
+
+    // Iluminación
+
+    escena.add(
+      new THREE.AmbientLight(0xffffff, 1.5)
+    );
+
+    const luz = new THREE.DirectionalLight(
+      0xffffff,
+      2
+    );
+
+    luz.position.set(2, 5, 5);
+    escena.add(luz);
+
+
+    // =====================================
+    // JERARQUÍA DEL MODELO
+    // =====================================
+
+    // Este grupo permite controlar la altura.
+    const grupoAltura = new THREE.Group();
+    escena.add(grupoAltura);
+
+    // Este grupo recibe la posición y orientación
+    // calculadas a partir del marcador.
+    const grupoPose = new THREE.Group();
+    grupoAltura.add(grupoPose);
+
+    // Este grupo contiene el modelo y su escala.
+    const grupoModelo = new THREE.Group();
+    grupoPose.add(grupoModelo);
+
+
+    // =====================================
+    // CARGA DEL MODELO GLB
+    // =====================================
+
+    const loader = new GLTFLoader();
+
+    loader.load(
+      RUTA_MODELO,
+
+      function(gltf) {
+
+        grupoModelo.add(gltf.scene);
+
+        // Para marcador colocado horizontalmente
+        // sobre el suelo: convierte el eje vertical
+        // Y del modelo en la normal del marcador.
+        gltf.scene.rotation.x = Math.PI / 2;
+
+        estado.textContent = "Modelo cargado. Buscando marcador.";
+
+      },
+
+      undefined,
+
+      function(error) {
+        console.error(error);
+        estado.textContent = "Error cargando modelo.glb";
+      }
+    );
+
+
+    // =====================================
+    // CONTROLES
+    // =====================================
+
+    sliderAltura.addEventListener("input", () => {
+
+      const valor = Number(sliderAltura.value);
+
+      // Centímetros a metros.
+      grupoAltura.position.y = valor / 100;
+
+      document.getElementById("valorAltura").textContent =
+        valor + " cm";
+
+    });
+
+
+    sliderEscala.addEventListener("input", () => {
+
+      const valor = Number(sliderEscala.value);
+
+      grupoModelo.scale.setScalar(valor);
+
+      document.getElementById("valorEscala").textContent =
+        valor.toFixed(2) + "×";
+
+    });
+
+
+    // =====================================
+    // CÁMARA
+    // =====================================
+
+    document.getElementById("iniciar")
+      .addEventListener("click", iniciarCamara);
+
+    async function iniciarCamara() {
+
+      try {
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+
+        video.srcObject = stream;
+
+        await video.play();
+
+        document.getElementById("iniciar").style.display = "none";
+
+        iniciarDeteccion();
+
+      } catch(error) {
+
+        console.error(error);
+
+        estado.textContent =
+          "No se pudo activar la cámara. Revisa los permisos de Safari.";
+
+      }
+
+    }
+
+
+    // =====================================
+    // ESTIMACIÓN DE POSICIÓN
+    // =====================================
+
+    let posit = null;
+
+    function iniciarDeteccion() {
+
+      const ancho = canvas.width;
+
+      // Aproximación de la distancia focal en píxeles.
+      const focal =
+        (ancho / 2) /
+        Math.tan((CAMPO_VISUAL * Math.PI / 180) / 2);
+
+      posit = new Posit(
+        TAMANO_MARCADOR_MM,
+        focal
+      );
+
+      requestAnimationFrame(actualizar);
+
+    }
+
+
+    // =====================================
+    // DETECCIÓN EN TIEMPO REAL
+    // =====================================
+
+    function actualizar() {
+
+      requestAnimationFrame(actualizar);
+
+      if (!video.videoWidth || !posit) {
+        renderizador.render(escena, camara3D);
+        return;
+      }
+
+      // Reducimos el video para acelerar la detección.
+      ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      const imagen = ctx.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      const marcadores = detector.detect(imagen);
+
+      // Buscamos exclusivamente el ID configurado.
+      const marcador = marcadores.find(
+        m => m.id === ID_MARCADOR
+      );
+
+      if (marcador) {
+
+        estado.textContent = "Marcador detectado: ID " + ID_MARCADOR;
+
+        // Centrar las esquinas en la imagen.
+        const esquinas = marcador.corners.map(p => ({
+          x: p.x - canvas.width / 2,
+          y: canvas.height / 2 - p.y
+        }));
+
+        const pose = posit.pose(esquinas);
+
+        if (pose && pose.bestRotation && pose.bestTranslation) {
+
+          const R = pose.bestRotation;
+          const T = pose.bestTranslation;
+
+          // Conversión de coordenadas de cámara
+          // a coordenadas de Three.js.
+          const matriz = new THREE.Matrix4();
+
+          matriz.set(
+             R[0][0], -R[0][1], -R[0][2],  T[0] / 1000,
+            -R[1][0],  R[1][1],  R[1][2], -T[1] / 1000,
+            -R[2][0],  R[2][1],  R[2][2], -T[2] / 1000,
+             0,         0,         0,        1
+          );
+
+          grupoPose.matrixAutoUpdate = false;
+          grupoPose.matrix.copy(matriz);
+
+          grupoPose.matrixWorldNeedsUpdate = true;
+
+        }
+
+      } else {
+
+        estado.textContent = "Buscando marcador ArUco...";
+
+      }
+
+      renderizador.render(escena, camara3D);
+
+    }
+
+
+    // =====================================
+    // AJUSTES DE PANTALLA
+    // =====================================
+
+    window.addEventListener("resize", () => {
+
+      camara3D.aspect =
+        window.innerWidth / window.innerHeight;
+
+      camara3D.updateProjectionMatrix();
+
+      renderizador.setSize(
+        window.innerWidth,
+        window.innerHeight
+      );
 
     });
 
