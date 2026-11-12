@@ -1,59 +1,108 @@
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8">
-  <title>Demo AR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visualizador 3D con AR</title>
 
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+
+  <!-- Cargar Model Viewer -->
   <script type="module"
     src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js">
   </script>
 
   <style>
+
     body {
       margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
       background: #eeeeee;
     }
 
+    /* Visor 3D */
     model-viewer {
       width: 100vw;
       height: 100vh;
+      background-color: #eeeeee;
     }
 
-    .ar-button {
-      position: absolute;
+    /* Botón AR fijo */
+    #botonAR {
+      position: fixed;
       bottom: 30px;
       left: 50%;
       transform: translateX(-50%);
-      background: #222;
+      z-index: 1000;
+
+      background: #1677ff;
       color: white;
-      padding: 15px 25px;
+
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: 12px;
+
+      padding: 16px 28px;
+
+      font-size: 17px;
+      font-weight: bold;
+
+      cursor: pointer;
+      white-space: nowrap;
+
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
     }
+
+    #botonAR:active {
+      background: #0055cc;
+    }
+
   </style>
 </head>
 
 <body>
 
-<model-viewer
-  src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.glb"
-  ios-src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.usdz"
+  <!-- VISUALIZADOR 3D -->
+  <model-viewer
+    id="visor"
 
-  ar
-  ar-modes="quick-look"
-  ar-scale="fixed"
+    src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.glb"
 
-  camera-controls
-  alt="Mi modelo AR">
+    ios-src="https://raw.githubusercontent.com/EstebanTby/ar1/main/1/modelo.usdz"
 
-  <button slot="ar-button" class="ar-button">
+    ar
+    ar-modes="quick-look"
+    ar-scale="fixed"
+
+    camera-controls
+
+    alt="Mi modelo 3D en realidad aumentada">
+
+  </model-viewer>
+
+
+  <!-- BOTÓN AR SIEMPRE VISIBLE -->
+  <button id="botonAR">
     Posicionar modelo en mi espacio
   </button>
 
-</model-viewer>
+
+  <!-- ACTIVAR REALIDAD AUMENTADA -->
+  <script>
+
+    const visor = document.getElementById("visor");
+    const boton = document.getElementById("botonAR");
+
+    boton.addEventListener("click", function() {
+
+      visor.activateAR();
+
+    });
+
+  </script>
 
 </body>
 </html>
