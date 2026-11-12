@@ -1,495 +1,830 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Visualizador 3D con AR y marcador ArUco</title>
 
-  <title>Visor AR con ArUco</title>
+  <!-- Visor 3D y Quick Look de Apple -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
-    body {
+    html, body {
+      width: 100%;
+      height: 100%;
       margin: 0;
       overflow: hidden;
-      background: #000;
       font-family: Arial, sans-serif;
+      background: #111;
+    }
+
+    /* MODO ORIGINAL: vista previa GLB */
+    #vistaOriginal {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      background: #111;
+    }
+
+    model-viewer {
+      width: 100%;
+      height: 100%;
+      flex: 1;
+      background: #f2f2f2;
+      --poster-color: #f2f2f2;
+    }
+
+    model-viewer::part(default-ar-button) {
+      display: none;
+    }
+
+    #botoneraOriginal {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: max(20px, env(safe-area-inset-bottom));
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .boton {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 16px 18px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    #botonEspacio {
+      background: #1677ff;
+      color: white;
+    }
+
+    #botonAruco {
+      background: #222;
+      color: white;
+      border: 1px solid rgba(255,255,255,.65);
+    }
+
+    #mensajeModelo {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 15;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: #fff;
+      background: rgba(0,0,0,.55);
+      font-size: 12px;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    /* MODO ARUCO */
+    #vistaAruco {
+      position: fixed;
+      inset: 0;
+      display: none;
+      background: #000;
     }
 
     #camara {
-      position: fixed;
+      position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
+      background: #000;
     }
 
     #visor3D {
-      position: fixed;
+      position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       pointer-events: none;
     }
 
-    #panel {
-      position: fixed;
+    #panelAruco {
+      position: absolute;
+      z-index: 10;
       left: 12px;
       right: 12px;
-      bottom: 15px;
-      z-index: 10;
-      padding: 15px;
-      background: rgba(0,0,0,0.78);
-      color: white;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      padding: 12px;
+      color: #fff;
+      background: rgba(0,0,0,.82);
       border-radius: 12px;
+      max-height: 48%;
+      overflow-y: auto;
     }
 
-    #iniciar {
-      width: 100%;
-      padding: 14px;
-      border: 0;
-      border-radius: 8px;
-      background: #1677ff;
-      color: white;
-      font-size: 16px;
-      font-weight: bold;
-      margin-bottom: 12px;
+    #cabeceraAruco {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    #miniMarcador {
+      width: 54px;
+      height: 54px;
+      object-fit: contain;
+      background: white;
+      border-radius: 4px;
+      flex: 0 0 54px;
+    }
+
+    #textoMarcador {
+      font-size: 12px;
+      line-height: 1.35;
+      color: #ddd;
+    }
+
+    #estado {
+      text-align: center;
+      font-size: 13px;
+      color: #ffdc75;
+      margin: 8px 0;
+      min-height: 18px;
     }
 
     .control {
-      margin-top: 12px;
+      margin-top: 10px;
     }
 
     .control label {
       display: flex;
       justify-content: space-between;
+      gap: 10px;
       font-size: 14px;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
 
     input[type="range"] {
       width: 100%;
+      min-height: 28px;
     }
 
-    #estado {
-      font-size: 13px;
+    #botonVolver {
       margin-top: 10px;
-      color: #ddd;
-      text-align: center;
+      background: #444;
+      color: white;
     }
 
-    #deteccion {
-      color: #ffcc55;
+    #error {
+      color: #ff9b9b;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 7px;
+      white-space: normal;
+    }
+
+    @media (orientation: landscape) {
+      #panelAruco {
+        left: auto;
+        right: 12px;
+        bottom: 12px;
+        width: min(360px, 42vw);
+        max-height: 85%;
+      }
+
+      #botoneraOriginal {
+        left: 50%;
+        right: auto;
+        width: min(430px, calc(100% - 24px));
+        transform: translateX(-50%);
+      }
     }
   </style>
 </head>
 
 <body>
 
-  <video id="camara" autoplay playsinline muted></video>
-  <canvas id="visor3D"></canvas>
+  <!-- =====================================================
+       MODO ORIGINAL: MODEL-VIEWER + QUICK LOOK
+       ===================================================== -->
 
-  <div id="panel">
+  <main id="vistaOriginal">
+    <model-viewer
+      id="modeloViewer"
+      src="https://raw.githubusercontent.com/EstebanTby/ar1/main/2/modelo.glb"
+      ios-src="https://raw.githubusercontent.com/EstebanTby/ar1/main/2/modelo.usdz"
+      alt="Modelo 3D"
+      camera-controls
+      ar
+      ar-modes="quick-look"
+      ar-scale="fixed"
+      shadow-intensity="1"
+      exposure="1">
+    </model-viewer>
 
-    <button id="iniciar">
-      ACTIVAR CÁMARA Y AR
-    </button>
+    <div id="mensajeModelo">Cargando modelo 3D...</div>
 
-    <div class="control">
-      <label>
-        <span>Altura</span>
-        <span id="valorAltura">0 cm</span>
-      </label>
-      <input id="altura"
-             type="range"
-             min="-100"
-             max="300"
-             value="0"
-             step="1">
+    <div id="botoneraOriginal">
+      <button id="botonEspacio" class="boton" type="button">
+        POSICIONAR EN MI ESPACIO
+      </button>
+
+      <button id="botonAruco" class="boton" type="button">
+        ACTIVAR MARCADOR ARUCO
+      </button>
+    </div>
+  </main>
+
+
+  <!-- =====================================================
+       MODO ARUCO: CÁMARA + THREE.JS
+       ===================================================== -->
+
+  <section id="vistaAruco">
+    <video id="camara" autoplay playsinline muted></video>
+    <canvas id="visor3D"></canvas>
+
+    <div id="panelAruco">
+      <div id="cabeceraAruco">
+        <img
+          id="miniMarcador"
+          src="https://raw.githubusercontent.com/EstebanTby/ar1/main/marcador.png"
+          alt="Marcador ArUco">
+        <div id="textoMarcador">
+          <strong>Seguimiento ArUco</strong><br>
+          Apunta la cámara al marcador impreso. El cuadrado negro exterior debe medir 15 cm.
+        </div>
+      </div>
+
+      <div id="estado">Preparando el modo ArUco...</div>
+      <div id="error"></div>
+
+      <div class="control">
+        <label>
+          <span>Altura</span>
+          <span id="valorAltura">0 cm</span>
+        </label>
+        <input id="altura" type="range" min="-100" max="300" value="0" step="1">
+      </div>
+
+      <div class="control">
+        <label>
+          <span>Escala</span>
+          <span id="valorEscala">1.00×</span>
+        </label>
+        <input id="escala" type="range" min="0.1" max="3" value="1" step="0.05">
+      </div>
+
+      <button id="botonVolver" class="boton" type="button">
+        VOLVER A LA VISTA 3D
+      </button>
     </div>
 
-    <div class="control">
-      <label>
-        <span>Escala</span>
-        <span id="valorEscala">1.00×</span>
-      </label>
-      <input id="escala"
-             type="range"
-             min="0.1"
-             max="3"
-             value="1"
-             step="0.05">
-    </div>
+    <canvas id="procesamiento" width="640" height="480" style="display:none"></canvas>
+  </section>
 
-    <div id="estado">
-      <span id="deteccion">Buscando marcador ArUco...</span>
-    </div>
-
-  </div>
-
-  <canvas id="procesamiento"
-          width="640"
-          height="480"
-          style="display:none">
-  </canvas>
 
   <script type="module">
+    // =====================================================
+    // RUTAS DE GITHUB
+    // =====================================================
 
-    import * as THREE from
-      "https://esm.sh/three@0.170.0";
+    const RUTA_MODELO =
+      "https://raw.githubusercontent.com/EstebanTby/ar1/main/2/modelo.glb";
 
-    import { GLTFLoader } from
-      "https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js";
+    const RUTA_USDZ =
+      "https://raw.githubusercontent.com/EstebanTby/ar1/main/2/modelo.usdz";
 
-    import {
-      Detector,
-      Dictionary,
-      Posit
-    } from "https://esm.sh/js-aruco3@3.0.0";
-
-    import dict5x5_50 from
-      "https://esm.sh/js-aruco3@3.0.0/dictionaries/dict-5x5-50";
+    const RUTA_MARCADOR =
+      "https://raw.githubusercontent.com/EstebanTby/ar1/main/marcador.png";
 
 
-    // =====================================
-    // CONFIGURACIÓN
-    // =====================================
+    // =====================================================
+    // CONFIGURACIÓN DEL MARCADOR
+    // =====================================================
 
     const ID_MARCADOR = 0;
 
-    // Medida real del cuadrado negro exterior,
-    // en milímetros.
+    // Medida del cuadrado negro exterior del marcador, en mm.
+    // 150 mm = 15 cm. Cambiar si el marcador impreso tiene otra medida.
     const TAMANO_MARCADOR_MM = 150;
 
-    // Campo visual horizontal aproximado de cámara.
-    const CAMPO_VISUAL = 60;
-
-    // Modelo GLB dentro de la carpeta /1/
-    const RUTA_MODELO = "./modelo.glb";
+    // Campo visual horizontal aproximado. Puede requerir calibración.
+    const CAMPO_VISUAL_HORIZONTAL = 60;
 
 
-    // =====================================
+    // =====================================================
     // ELEMENTOS HTML
-    // =====================================
+    // =====================================================
+
+    const vistaOriginal = document.getElementById("vistaOriginal");
+    const vistaAruco = document.getElementById("vistaAruco");
+    const viewer = document.getElementById("modeloViewer");
+    const mensajeModelo = document.getElementById("mensajeModelo");
 
     const video = document.getElementById("camara");
-
-    const canvas = document.getElementById("procesamiento");
-    const ctx = canvas.getContext("2d", {
+    const canvas3D = document.getElementById("visor3D");
+    const canvasProcesamiento = document.getElementById("procesamiento");
+    const ctx = canvasProcesamiento.getContext("2d", {
       willReadFrequently: true
     });
 
-    const canvas3D = document.getElementById("visor3D");
-
-    const estado = document.getElementById("deteccion");
-
+    const estado = document.getElementById("estado");
+    const errorUI = document.getElementById("error");
     const sliderAltura = document.getElementById("altura");
     const sliderEscala = document.getElementById("escala");
 
-
-    // =====================================
-    // DETECTOR ARUCO
-    // =====================================
-
-    const diccionario = new Dictionary(dict5x5_50);
-
-    const detector = new Detector({
-      dictionary: diccionario
-    });
+    document.getElementById("miniMarcador").src = RUTA_MARCADOR;
 
 
-    // =====================================
-    // ESCENA THREE.JS
-    // =====================================
+    // =====================================================
+    // ESTADO DEL MODO ARUCO
+    // =====================================================
 
-    const escena = new THREE.Scene();
+    let THREE = null;
+    let GLTFLoader = null;
+    let Detector = null;
+    let Dictionary = null;
+    let Posit = null;
+    let definicionDiccionario = null;
 
-    const camara3D = new THREE.PerspectiveCamera(
-      CAMPO_VISUAL,
-      window.innerWidth / window.innerHeight,
-      0.01,
-      100
-    );
+    let escena = null;
+    let camara3D = null;
+    let renderizador = null;
+    let detector = null;
+    let posit = null;
 
-    const renderizador = new THREE.WebGLRenderer({
-      canvas: canvas3D,
-      alpha: true,
-      antialias: true
-    });
+    let grupoAltura = null;
+    let grupoPose = null;
+    let grupoModelo = null;
 
-    renderizador.setPixelRatio(
-      Math.min(window.devicePixelRatio, 2)
-    );
-
-    renderizador.setSize(
-      window.innerWidth,
-      window.innerHeight
-    );
-
-    renderizador.outputColorSpace = THREE.SRGBColorSpace;
+    let streamCamara = null;
+    let bucleActivo = false;
+    let animacionId = null;
+    let arInicializado = false;
+    let modeloArucoCargado = false;
 
 
-    // Iluminación
+    // =====================================================
+    // BOTÓN QUICK LOOK DE APPLE
+    // =====================================================
 
-    escena.add(
-      new THREE.AmbientLight(0xffffff, 1.5)
-    );
-
-    const luz = new THREE.DirectionalLight(
-      0xffffff,
-      2
-    );
-
-    luz.position.set(2, 5, 5);
-    escena.add(luz);
-
-
-    // =====================================
-    // JERARQUÍA DEL MODELO
-    // =====================================
-
-    // Este grupo permite controlar la altura.
-    const grupoAltura = new THREE.Group();
-    escena.add(grupoAltura);
-
-    // Este grupo recibe la posición y orientación
-    // calculadas a partir del marcador.
-    const grupoPose = new THREE.Group();
-    grupoAltura.add(grupoPose);
-
-    // Este grupo contiene el modelo y su escala.
-    const grupoModelo = new THREE.Group();
-    grupoPose.add(grupoModelo);
-
-
-    // =====================================
-    // CARGA DEL MODELO GLB
-    // =====================================
-
-    const loader = new GLTFLoader();
-
-    loader.load(
-      RUTA_MODELO,
-
-      function(gltf) {
-
-        grupoModelo.add(gltf.scene);
-
-        // Para marcador colocado horizontalmente
-        // sobre el suelo: convierte el eje vertical
-        // Y del modelo en la normal del marcador.
-        gltf.scene.rotation.x = Math.PI / 2;
-
-        estado.textContent = "Modelo cargado. Buscando marcador.";
-
-      },
-
-      undefined,
-
-      function(error) {
-        console.error(error);
-        estado.textContent = "Error cargando modelo.glb";
-      }
-    );
-
-
-    // =====================================
-    // CONTROLES
-    // =====================================
-
-    sliderAltura.addEventListener("input", () => {
-
-      const valor = Number(sliderAltura.value);
-
-      // Centímetros a metros.
-      grupoAltura.position.y = valor / 100;
-
-      document.getElementById("valorAltura").textContent =
-        valor + " cm";
-
-    });
-
-
-    sliderEscala.addEventListener("input", () => {
-
-      const valor = Number(sliderEscala.value);
-
-      grupoModelo.scale.setScalar(valor);
-
-      document.getElementById("valorEscala").textContent =
-        valor.toFixed(2) + "×";
-
-    });
-
-
-    // =====================================
-    // CÁMARA
-    // =====================================
-
-    document.getElementById("iniciar")
-      .addEventListener("click", iniciarCamara);
-
-    async function iniciarCamara() {
-
+    document.getElementById("botonEspacio").addEventListener("click", async () => {
       try {
+        // Espera a que model-viewer esté definido y activa Quick Look
+        // directamente desde el toque del usuario.
+        await customElements.whenDefined("model-viewer");
+        await viewer.activateAR();
+      } catch (e) {
+        console.error("Error al abrir Quick Look:", e);
+        mensajeModelo.textContent =
+          "No se pudo abrir Quick Look. Comprueba que el USDZ esté disponible.";
+      }
+    });
 
-        const stream = await navigator.mediaDevices.getUserMedia({
+
+    // =====================================================
+    // ESTADO DE CARGA DEL MODELO ORIGINAL
+    // =====================================================
+
+    viewer.addEventListener("load", () => {
+      mensajeModelo.textContent = "Modelo 3D cargado";
+      setTimeout(() => {
+        mensajeModelo.style.display = "none";
+      }, 1800);
+    });
+
+    viewer.addEventListener("error", () => {
+      mensajeModelo.textContent = "No se pudo cargar el GLB. Revisa la ruta de GitHub.";
+    });
+
+
+    // =====================================================
+    // ENTRAR AL MODO ARUCO
+    // =====================================================
+
+    document.getElementById("botonAruco").addEventListener("click", async () => {
+      vistaOriginal.style.display = "none";
+      vistaAruco.style.display = "block";
+      errorUI.textContent = "";
+      estado.textContent = "Comprobando cámara y preparando detector...";
+
+      await iniciarModoAruco();
+    });
+
+
+    // =====================================================
+    // CARGA DIFERIDA DE LIBRERÍAS
+    // Si estas librerías fallan, Quick Look sigue disponible.
+    // =====================================================
+
+    async function cargarLibrerias() {
+      if (THREE) return;
+
+      const [threeModule, loaderModule, arucoModule, dictionaryModule] =
+        await Promise.all([
+          import("https://esm.sh/three@0.170.0"),
+          import("https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js"),
+          import("https://esm.sh/js-aruco3@3.0.0"),
+          import("https://esm.sh/js-aruco3@3.0.0/dictionaries/dict-5x5-50")
+        ]);
+
+      THREE = threeModule;
+      GLTFLoader = loaderModule.GLTFLoader;
+      Detector = arucoModule.Detector;
+      Dictionary = arucoModule.Dictionary;
+      Posit = arucoModule.Posit;
+      definicionDiccionario = dictionaryModule.default;
+    }
+
+
+    // =====================================================
+    // INICIALIZAR THREE.JS
+    // =====================================================
+
+    function inicializarEscena() {
+      if (arInicializado) return;
+
+      escena = new THREE.Scene();
+
+      camara3D = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        0.01,
+        100
+      );
+
+      renderizador = new THREE.WebGLRenderer({
+        canvas: canvas3D,
+        alpha: true,
+        antialias: true
+      });
+
+      renderizador.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderizador.setSize(window.innerWidth, window.innerHeight);
+      renderizador.setClearColor(0x000000, 0);
+      renderizador.outputColorSpace = THREE.SRGBColorSpace;
+
+      escena.add(new THREE.AmbientLight(0xffffff, 1.5));
+
+      const luz = new THREE.DirectionalLight(0xffffff, 2);
+      luz.position.set(2, 5, 5);
+      escena.add(luz);
+
+      grupoAltura = new THREE.Group();
+      escena.add(grupoAltura);
+
+      grupoPose = new THREE.Group();
+      grupoAltura.add(grupoPose);
+      grupoPose.visible = false;
+
+      grupoModelo = new THREE.Group();
+      grupoPose.add(grupoModelo);
+
+      arInicializado = true;
+      ajustarPantalla();
+    }
+
+
+    // =====================================================
+    // CARGAR EL GLB EN THREE.JS
+    // =====================================================
+
+    function cargarModeloParaAruco() {
+      if (modeloArucoCargado) return Promise.resolve();
+
+      return new Promise((resolve, reject) => {
+        const loader = new GLTFLoader();
+
+        loader.load(
+          RUTA_MODELO,
+          (gltf) => {
+            grupoModelo.add(gltf.scene);
+
+            // Orientación prevista para marcador horizontal sobre el suelo.
+            gltf.scene.rotation.x = Math.PI / 2;
+
+            modeloArucoCargado = true;
+            resolve();
+          },
+          undefined,
+          (err) => reject(err)
+        );
+      });
+    }
+
+
+    // =====================================================
+    // INICIAR CÁMARA Y DETECTOR
+    // =====================================================
+
+    async function iniciarModoAruco() {
+      try {
+        if (!window.isSecureContext) {
+          throw new Error(
+            "Safari requiere una página HTTPS para permitir el acceso a la cámara."
+          );
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error(
+            "Este navegador no ofrece acceso a la cámara. Abre la página directamente en Safari."
+          );
+        }
+
+        await cargarLibrerias();
+        inicializarEscena();
+
+        estado.textContent = "Solicitando permiso para usar la cámara...";
+
+        streamCamara = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 640 },
-            height: { ideal: 480 }
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           }
         });
 
-        video.srcObject = stream;
+        video.srcObject = streamCamara;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute("playsinline", "");
+        video.setAttribute("webkit-playsinline", "");
 
         await video.play();
 
-        document.getElementById("iniciar").style.display = "none";
+        detector = new Detector({
+          dictionary: new Dictionary(definicionDiccionario)
+        });
 
-        iniciarDeteccion();
+        ajustarCanvasProcesamiento();
 
-      } catch(error) {
+        const focal = obtenerFocal();
+        posit = new Posit(TAMANO_MARCADOR_MM, focal);
 
-        console.error(error);
+        await cargarModeloParaAruco();
 
-        estado.textContent =
-          "No se pudo activar la cámara. Revisa los permisos de Safari.";
+        grupoPose.visible = false;
+        bucleActivo = true;
+        estado.textContent = "Cámara activa. Buscando marcador ArUco ID " + ID_MARCADOR + "...";
 
+        actualizar();
+      } catch (e) {
+        console.error("Error iniciando ArUco:", e);
+
+        let mensaje = e.message || "No se pudo iniciar el modo ArUco.";
+
+        if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+          mensaje = "Safari no tiene permiso para usar la cámara. Revisa Ajustes del iPad > Safari > Cámara.";
+        } else if (e.name === "NotFoundError") {
+          mensaje = "No se encontró una cámara disponible.";
+        } else if (e.name === "NotReadableError") {
+          mensaje = "La cámara está siendo utilizada por otra aplicación.";
+        }
+
+        estado.textContent = "No se pudo iniciar la cámara.";
+        errorUI.textContent = mensaje;
+      }
+    }
+
+
+    // =====================================================
+    // AJUSTAR EL CANVAS AL FORMATO DE PANTALLA
+    // Se recorta el vídeo igual que object-fit: cover.
+    // =====================================================
+
+    function ajustarCanvasProcesamiento() {
+      const ancho = 640;
+      const aspecto = window.innerWidth / window.innerHeight;
+      const alto = Math.max(240, Math.round(ancho / aspecto));
+
+      canvasProcesamiento.width = ancho;
+      canvasProcesamiento.height = alto;
+    }
+
+
+    function dibujarVideoRecortado() {
+      const sw = video.videoWidth;
+      const sh = video.videoHeight;
+      const tw = canvasProcesamiento.width;
+      const th = canvasProcesamiento.height;
+
+      if (!sw || !sh) return;
+
+      const aspectoFuente = sw / sh;
+      const aspectoDestino = tw / th;
+
+      let sx = 0;
+      let sy = 0;
+      let swCrop = sw;
+      let shCrop = sh;
+
+      if (aspectoFuente > aspectoDestino) {
+        swCrop = sh * aspectoDestino;
+        sx = (sw - swCrop) / 2;
+      } else {
+        shCrop = sw / aspectoDestino;
+        sy = (sh - shCrop) / 2;
       }
 
-    }
-
-
-    // =====================================
-    // ESTIMACIÓN DE POSICIÓN
-    // =====================================
-
-    let posit = null;
-
-    function iniciarDeteccion() {
-
-      const ancho = canvas.width;
-
-      // Aproximación de la distancia focal en píxeles.
-      const focal =
-        (ancho / 2) /
-        Math.tan((CAMPO_VISUAL * Math.PI / 180) / 2);
-
-      posit = new Posit(
-        TAMANO_MARCADOR_MM,
-        focal
+      ctx.drawImage(
+        video,
+        sx, sy, swCrop, shCrop,
+        0, 0, tw, th
       );
-
-      requestAnimationFrame(actualizar);
-
     }
 
 
-    // =====================================
-    // DETECCIÓN EN TIEMPO REAL
-    // =====================================
+    // =====================================================
+    // CÁLCULO DE LA DISTANCIA FOCAL APROXIMADA
+    // =====================================================
+
+    function obtenerFocal() {
+      const ancho = canvasProcesamiento.width;
+      return (ancho / 2) /
+        Math.tan((CAMPO_VISUAL_HORIZONTAL * Math.PI / 180) / 2);
+    }
+
+
+    // =====================================================
+    // CONTROLES DE ALTURA Y ESCALA
+    // =====================================================
+
+    sliderAltura.addEventListener("input", () => {
+      const valor = Number(sliderAltura.value);
+
+      if (grupoAltura) {
+        grupoAltura.position.y = valor / 100;
+      }
+
+      document.getElementById("valorAltura").textContent = valor + " cm";
+    });
+
+    sliderEscala.addEventListener("input", () => {
+      const valor = Number(sliderEscala.value);
+
+      if (grupoModelo) {
+        grupoModelo.scale.setScalar(valor);
+      }
+
+      document.getElementById("valorEscala").textContent =
+        valor.toFixed(2) + "×";
+    });
+
+
+    // =====================================================
+    // BUCLE DE DETECCIÓN EN TIEMPO REAL
+    // =====================================================
 
     function actualizar() {
+      if (!bucleActivo) return;
 
-      requestAnimationFrame(actualizar);
+      animacionId = requestAnimationFrame(actualizar);
 
-      if (!video.videoWidth || !posit) {
-        renderizador.render(escena, camara3D);
+      if (!video.videoWidth || !detector || !posit || !renderizador) {
+        if (renderizador && escena && camara3D) {
+          renderizador.render(escena, camara3D);
+        }
         return;
       }
 
-      // Reducimos el video para acelerar la detección.
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      try {
+        dibujarVideoRecortado();
 
-      const imagen = ctx.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+        const imagen = ctx.getImageData(
+          0,
+          0,
+          canvasProcesamiento.width,
+          canvasProcesamiento.height
+        );
 
-      const marcadores = detector.detect(imagen);
+        const marcadores = detector.detect(imagen);
 
-      // Buscamos exclusivamente el ID configurado.
-      const marcador = marcadores.find(
-        m => m.id === ID_MARCADOR
-      );
+        const marcador = marcadores.find(m => m.id === ID_MARCADOR);
 
-      if (marcador) {
+        if (marcador) {
+          estado.textContent = "Marcador detectado: ID " + ID_MARCADOR;
+          errorUI.textContent = "";
 
-        estado.textContent = "Marcador detectado: ID " + ID_MARCADOR;
+          const esquinas = marcador.corners.map(p => ({
+            x: p.x - canvasProcesamiento.width / 2,
+            y: canvasProcesamiento.height / 2 - p.y
+          }));
 
-        // Centrar las esquinas en la imagen.
-        const esquinas = marcador.corners.map(p => ({
-          x: p.x - canvas.width / 2,
-          y: canvas.height / 2 - p.y
-        }));
+          const pose = posit.pose(esquinas);
 
-        const pose = posit.pose(esquinas);
+          if (pose && pose.bestRotation && pose.bestTranslation) {
+            const R = pose.bestRotation;
+            const T = pose.bestTranslation;
 
-        if (pose && pose.bestRotation && pose.bestTranslation) {
+            const matriz = new THREE.Matrix4();
 
-          const R = pose.bestRotation;
-          const T = pose.bestTranslation;
+            matriz.set(
+               R[0][0], -R[0][1], -R[0][2],  T[0] / 1000,
+              -R[1][0],  R[1][1],  R[1][2], -T[1] / 1000,
+              -R[2][0],  R[2][1],  R[2][2], -T[2] / 1000,
+               0,        0,        0,        1
+            );
 
-          // Conversión de coordenadas de cámara
-          // a coordenadas de Three.js.
-          const matriz = new THREE.Matrix4();
-
-          matriz.set(
-             R[0][0], -R[0][1], -R[0][2],  T[0] / 1000,
-            -R[1][0],  R[1][1],  R[1][2], -T[1] / 1000,
-            -R[2][0],  R[2][1],  R[2][2], -T[2] / 1000,
-             0,         0,         0,        1
-          );
-
-          grupoPose.matrixAutoUpdate = false;
-          grupoPose.matrix.copy(matriz);
-
-          grupoPose.matrixWorldNeedsUpdate = true;
-
+            grupoPose.matrixAutoUpdate = false;
+            grupoPose.matrix.copy(matriz);
+            grupoPose.matrixWorldNeedsUpdate = true;
+            grupoPose.visible = true;
+          }
+        } else {
+          estado.textContent = "Buscando marcador ArUco ID " + ID_MARCADOR + "...";
+          grupoPose.visible = false;
         }
 
-      } else {
+        renderizador.render(escena, camara3D);
 
-        estado.textContent = "Buscando marcador ArUco...";
-
+      } catch (e) {
+        console.error("Error en detección:", e);
+        estado.textContent = "Error procesando la imagen de cámara.";
+        errorUI.textContent = e.message || "";
       }
-
-      renderizador.render(escena, camara3D);
-
     }
 
 
-    // =====================================
-    // AJUSTES DE PANTALLA
-    // =====================================
+    // =====================================================
+    // AJUSTES DE PANTALLA Y ORIENTACIÓN DEL IPAD
+    // =====================================================
 
-    window.addEventListener("resize", () => {
+    function ajustarPantalla() {
+      if (!arInicializado) return;
 
-      camara3D.aspect =
-        window.innerWidth / window.innerHeight;
+      const ancho = window.innerWidth;
+      const alto = window.innerHeight;
+      const aspecto = ancho / alto;
 
+      renderizador.setSize(ancho, alto);
+
+      // El focal de POSIT se calcula en píxeles horizontales.
+      // Convertimos ese valor al FOV vertical que espera Three.js.
+      ajustarCanvasProcesamiento();
+
+      const focal = obtenerFocal();
+      const fovVertical = 2 * Math.atan(canvasProcesamiento.height / (2 * focal)) * 180 / Math.PI;
+
+      camara3D.aspect = aspecto;
+      camara3D.fov = fovVertical;
       camara3D.updateProjectionMatrix();
 
-      renderizador.setSize(
-        window.innerWidth,
-        window.innerHeight
-      );
+      if (detector) {
+        posit = new Posit(TAMANO_MARCADOR_MM, focal);
+      }
+    }
 
+    window.addEventListener("resize", ajustarPantalla);
+    window.addEventListener("orientationchange", () => {
+      setTimeout(ajustarPantalla, 350);
     });
+
+
+    // =====================================================
+    // VOLVER A LA VISTA ORIGINAL Y APAGAR LA CÁMARA
+    // =====================================================
+
+    document.getElementById("botonVolver").addEventListener("click", volverVistaOriginal);
+
+    function volverVistaOriginal() {
+      bucleActivo = false;
+
+      if (animacionId !== null) {
+        cancelAnimationFrame(animacionId);
+        animacionId = null;
+      }
+
+      if (streamCamara) {
+        streamCamara.getTracks().forEach(track => track.stop());
+        streamCamara = null;
+      }
+
+      video.pause();
+      video.srcObject = null;
+
+      if (grupoPose) {
+        grupoPose.visible = false;
+      }
+
+      if (detector && detector.dispose) {
+        detector.dispose();
+      }
+
+      detector = null;
+      posit = null;
+
+      vistaAruco.style.display = "none";
+      vistaOriginal.style.display = "flex";
+    }
 
   </script>
 
